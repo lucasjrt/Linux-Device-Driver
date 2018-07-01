@@ -1,12 +1,7 @@
 #include <linux/init.h>
-#include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/interrupt.h>
-#include <asm/io.h>
-#include <linux/signal.h>
-#include <linux/sched.h>
 #include <linux/syscalls.h>
-#include <linux/pid.h>
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Lucas Justino, Salomao Alves, Tarcisio Junio");
@@ -163,13 +158,13 @@ irq_handler_t irq_handler(int irq, void *dev_id, struct pt_regs *regs) {
 
 static int __init hello_init(void) {
 	request_irq(1, (irq_handler_t) irq_handler, IRQF_SHARED, "devDriver_keyboard_irq", (void*) (irq_handler)); 
-	printk(KERN_INFO "Atalho de matar o processo registrado\n");
+	printk(KERN_INFO "O módulo de atalho para finalizar um processo pelo pid foi registrado\n");
 	return 0;
 }
 
 static void __exit hello_exit(void) {
 	free_irq(1, (void*) (irq_handler));
-	printk(KERN_INFO "Registro removido do atalho de matar um processo\n");
+	printk(KERN_INFO "O módulo de atalho para finalizar um processo pelo pid foi removido\n");
 }
 
 module_init(hello_init);

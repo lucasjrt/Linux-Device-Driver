@@ -16,7 +16,6 @@ MODULE_DESCRIPTION("Mata um processo com uma combinacao de teclas");
 #define CTRL   0x1D
 #define ALT    0x38
 #define SPACE  0x39
-
 #define KEY_1  0x02
 #define KEY_2  0x03
 #define KEY_3  0x04
@@ -27,51 +26,58 @@ MODULE_DESCRIPTION("Mata um processo com uma combinacao de teclas");
 #define KEY_8  0x09
 #define KEY_9  0x0A
 #define KEY_0  0x0B
-
-#define SCAN   0x7F
-#define STATUS 0x80
-
 #define S 0x1F
 #define M 0x32
 #define H 0x23
 
+//Controle de teclas
+#define SCAN   0x7F
+#define STATUS 0x80
+
+//Estrutura para o timer
 static struct timer_list my_timer;
 
-//Teclas pressionadas
+//Struct contendo informações do processo a ser finalizado
+struct task_struct *processo;
+
+//Variaveis de controle
 unsigned int key_codes[3] = {0, 0, 0};
 unsigned int pid_aux = 0;
 unsigned int pid = 0;
+
 unsigned long int time_aux = 0;
 unsigned long int time_aux_I = 0;
 unsigned long int time = 0;
-
 
 unsigned char setting_time = 0;
 unsigned char setting_pid = 0;
 unsigned char millisec = 0;
 unsigned char timing = 0;
 
-struct task_struct *processo;
-
-
+//Função que finaliza o processo
 void close_the_process(int pidR) {
 	processo = pid_task(find_vpid(pidR), PIDTYPE_PID);
 	force_sig(9, processo);
 }
 
+//Função que é chamada quando o timer finaliza
 void my_timer_callback(unsigned long data) {
 	close_the_process(pid);
-	//printk(KERN_INFO "~Processo de pid %d é finalizado\n", pid);
 	timing = 0;
 }
 
+//Tratador de interrupção
 irq_handler_t irq_handler(int irq, void *dev_id, struct pt_regs *regs) {
 	static unsigned char scancode;
 	static unsigned char status;
 
+	//Código da tecla recebida pela interrupção
 	scancode = inb(0x60);
+
+	//Status (Se a tecla foi pressionada ou solta)
 	status = inb(0x64);
 
+	//Modifica a posição do vetor conforme a tecla é pressionada ou solta
 	if((scancode & SCAN) == CTRL && (scancode & STATUS) == 0)
 		key_codes[V_CTRL] = 1;
 	if((scancode & SCAN) == CTRL && (scancode & STATUS) != 0)
@@ -209,8 +215,8 @@ irq_handler_t irq_handler(int irq, void *dev_id, struct pt_regs *regs) {
 	//Finalizando o processo instantâneo
 	if(setting_pid  && !setting_time && !key_codes[V_CTRL] && !key_codes[V_ALT] && pid_aux) {
 		pid = pid_aux;
-		close_the_process(pid);
 		printk(KERN_INFO "Matando processo de PID: %d\n", pid_aux);
+		close_the_process(pid);
 		setting_pid = 0;
 		setting_time = 0;
 		time_aux = 0;
@@ -219,16 +225,13 @@ irq_handler_t irq_handler(int irq, void *dev_id, struct pt_regs *regs) {
 
 	//Finalizando o proceso com timer
 	if(!setting_pid && setting_time && !key_codes[V_CTRL] && !key_codes[V_ALT] && pid_aux && time_aux && !timing) {
+		//Convertendo o tempo para horas minutos e segundo para mostrar no log
 		unsigned long int h = 0, m = 0, s = 0;
 		if(!millisec)
 			time_aux *= 1000;
 		pid = pid_aux;
 		time = time_aux;
 		time_aux /= 1000;
-		//h = time_aux / 3600000;
-		//m = time_aux / 60000;
-		//s = time_aux % 1000;
-		printk(KERN_INFO "Convertendo %lu para horas minutos e segundos\n", time_aux);
 		if(time_aux > 3600) {
 			m = time_aux / 60;
 			s = time_aux % 60;
@@ -248,11 +251,24 @@ irq_handler_t irq_handler(int irq, void *dev_id, struct pt_regs *regs) {
 		pid_aux = 0;
 	}
 
-	//Não permite definir um tempo
+	//Não permite definir um tempo novamente
 	if(!setting_pid && setting_time && !key_codes[V_CTRL] && !key_codes[V_ALT] && pid_aux && time_aux && timing) {
-		printk(KERN_INFO "O processo de PID %d ja foi programado para ser fechado em %lus\n", pid_aux, millisec?time_aux/1000:time_aux);
+		unsigned long int h = 0, m = 0, s = 0, aux = time;
+		aux /= 1000;
+		if(aux > 3600) {
+			m = aux / 60;
+			s = aux % 60;
+			h = m / 60;
+			m = m % 60;
+		} else {
+			m = aux / 60;
+			s = aux % 60;
+		}
+		setting_time = 0;
+		printk(KERN_INFO "O processo de PID %d ja está programado para ser fechado em %luh%lum%lus%s\n", pid, h, m, s, pid == pid_aux ?", não é possível redefinir o tempo":", não é possível agendar mais de um processo");
 	}
 
+	//Reseta as variáveis de controle
 	if(!setting_pid && !setting_time && !key_codes[V_CTRL] && !key_codes[V_ALT] && (pid_aux || time_aux)) {
 		pid_aux = 0;
 		time_aux = 0;
@@ -261,78 +277,19 @@ irq_handler_t irq_handler(int irq, void *dev_id, struct pt_regs *regs) {
 	return (irq_handler_t) IRQ_HANDLED;
 }
 
+//Inserção do módulo
 static int __init hello_init(void) {
-	// unsigned long int test = 100;
-	// printk(KERN_INFO "Teste de ulitoa: %s\n", ulitoa(test));
 	request_irq(1, (irq_handler_t) irq_handler, IRQF_SHARED, "devDriver_keyboard_irq", (void*) (irq_handler)); 
-	printk(KERN_INFO "O módulo de atalho para finalizar um processo pelo pid foi registrado\n");
+	printk(KERN_INFO "O módulo kill_shortcut foi registrado\n");
 	return 0;
 }
 
+//Remoção do módulo
 static void __exit hello_exit(void) {
 	free_irq(1, (void*) (irq_handler));
 	try_to_del_timer_sync(&my_timer);
-	printk(KERN_INFO "O módulo de atalho para finalizar um processo pelo pid foi removido\n");
+	printk(KERN_INFO "O módulo kill_shortcut foi removido\n");
 }
 
 module_init(hello_init);
 module_exit(hello_exit);
-
-
-
-// void swap_char(char *a, char *b) {
-// 	char *aux = a;
-// 	a = b;
-// 	b = aux;
-// }
-
-// char* reverse_a_string(char* str, int tam) {
-// 	int i = 0;
-// 	static char* aux;
-// 	aux  = (char*)vmalloc(sizeof(char) * tam);
-// 	while(str[i] != '\0') {
-// 		aux[i] = str[tam - i - 1];
-// 		i++;
-// 	}
-// 	aux[i] = '\0';
-// 	return aux;
-	
-// }
-
-// char* ulitoa(unsigned long int num) {	
-// 	char *str;
-// 	int i = 0;
-// 	str = (char*) vmalloc(sizeof(char) * 19);
-
-//     if (num == 0) {
-//         str[i++] = '0';
-//         str[i] = '\0';
-//         return str;
-//     }
-
-//     while (num != 0) {
-//         int mod = num % 10;
-//         str[i++] = (mod > 9)? (mod -10) + 'a' : mod + '0';
-//         num = num/10;
-//     }
-//     str[i] = '\0';
-
-//     str = reverse_a_string(str, i);
-
-//     return str;
-
-// }
-
-// char *print_time_programmed(unsigned long int time) {
-// 	char *str;
-// 	str = (char*) vmalloc(sizeof(char) * 19);
-// 	if(!time / 1000UL)
-//     	return "0s";
-//     //if(!((int)time / 60000)) {
-//     	//strcpy(str, ulitoa(time / 1000);
-//     	return str;
-//     //}
-
-// 	//("%s%s%s", time/3600000?ulitoa(time % 3600000)"h":"", time/60000?ulitoa(time % 60000)"m":"");
-// 	return str;
-// }

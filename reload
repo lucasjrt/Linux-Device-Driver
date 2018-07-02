@@ -1,0 +1,6 @@
+#!/bin/bash
+cd /home/lucasjrt/SO/TCD/Linux-Device-Driver
+sudo rmmod kill_shortcut.ko
+sudo dmesg -C
+make
+sudo insmod kill_shortcut.ko

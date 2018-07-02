@@ -31,20 +31,39 @@ MODULE_DESCRIPTION("Mata um processo com uma combinacao de teclas");
 #define SCAN   0x7F
 #define STATUS 0x80
 
-#define SEG 0x1F
-#define MIN 0x32
-#define HOR 0x23
+#define S 0x1F
+#define M 0x32
+#define H 0x23
 
-//static struct timer_list my_timer;
+static struct timer_list my_timer;
 
 //Teclas pressionadas
-int key_codes[3] = {0, 0, 0};
-int pid = 0;
+unsigned int key_codes[3] = {0, 0, 0};
+unsigned int pid_aux = 0;
+unsigned int pid = 0;
+unsigned long int time_aux = 0;
+unsigned long int time_aux_I = 0;
+unsigned long int time = 0;
 
-struct task_struct *processo;
 
 unsigned char setting_time = 0;
 unsigned char setting_pid = 0;
+unsigned char millisec = 0;
+unsigned char timing = 0;
+
+struct task_struct *processo;
+
+
+void close_the_process(int pidR) {
+	processo = pid_task(find_vpid(pidR), PIDTYPE_PID);
+	force_sig(9, processo);
+}
+
+void my_timer_callback(unsigned long data) {
+	close_the_process(pid);
+	//printk(KERN_INFO "~Processo de pid %d é finalizado\n", pid);
+	timing = 0;
+}
 
 irq_handler_t irq_handler(int irq, void *dev_id, struct pt_regs *regs) {
 	static unsigned char scancode;
@@ -72,91 +91,179 @@ irq_handler_t irq_handler(int irq, void *dev_id, struct pt_regs *regs) {
 	if (setting_pid && !setting_time && !(scancode & STATUS)) {
 		switch(scancode & SCAN) {
 			case KEY_1:
-				pid *= 10;
-				pid += 1;
-			break;
-
+				pid_aux *= 10;
+				pid_aux += 1;
+				break;
 			case KEY_2:
-				pid *= 10;
-				pid += 2;
-			break;
-
+				pid_aux *= 10;
+				pid_aux += 2;
+				break;
 			case KEY_3:
-				pid *= 10;
-				pid += 3;
-			break;
-
+				pid_aux *= 10;
+				pid_aux += 3;
+				break;
 			case KEY_4:
-				pid *= 10;
-				pid += 4;
-			break;
-
+				pid_aux *= 10;
+				pid_aux += 4;
+				break;
 			case KEY_5:
-				pid *= 10;
-				pid += 5;
-			break;
-
+				pid_aux *= 10;
+				pid_aux += 5;
+				break;
 			case KEY_6:
-				pid *= 10;
-				pid += 6;
-			break;
-
+				pid_aux *= 10;
+				pid_aux += 6;
+				break;
 			case KEY_7:
-				pid *= 10;
-				pid += 7;
-			break;
-
+				pid_aux *= 10;
+				pid_aux += 7;
+				break;
 			case KEY_8:
-				pid *= 10;
-				pid += 8;
-			break;
-
+				pid_aux *= 10;
+				pid_aux += 8;
+				break;
 			case KEY_9:
-				pid *= 10;
-				pid += 9;
-			break;
-
+				pid_aux *= 10;
+				pid_aux += 9;
+				break;
 			case KEY_0:
-				pid *= 10;
-			break;
-
-			default:
-			break;
-				pid = 0;
+				pid_aux *= 10;
+				break;
 		}
 	}
 
-	//LÊ o tempo
+	//Lê o tempo
 	if(!setting_pid && setting_time && !(scancode & STATUS)) {
 		switch(scancode & SCAN){
-
+			case KEY_1:
+				time_aux_I *= 10UL;
+				time_aux_I += 1UL;
+				break;
+			case KEY_2:
+				time_aux_I *= 10UL;
+				time_aux_I += 2UL;
+				break;
+			case KEY_3:
+				time_aux_I *= 10UL;
+				time_aux_I += 3UL;
+				break;
+			case KEY_4:
+				time_aux_I *= 10UL;
+				time_aux_I += 4UL;
+				break;
+			case KEY_5:
+				time_aux_I *= 10UL;
+				time_aux_I += 5UL;
+				break;
+			case KEY_6:
+				time_aux_I *= 10UL;
+				time_aux_I += 6UL;
+				break;
+			case KEY_7:
+				time_aux_I *= 10UL;
+				time_aux_I += 7UL;
+				break;
+			case KEY_8:
+				time_aux_I *= 10UL;
+				time_aux_I += 8UL;
+				break;
+			case KEY_9:
+				time_aux_I *= 10UL;
+				time_aux_I += 9UL;
+				break;
+			case KEY_0:
+				time_aux_I *= 10UL;
+				break;
+			case S:
+				if(!millisec)
+					millisec = 1;
+				time_aux += time_aux_I * 1000UL;
+				time_aux_I = 0UL;
+				break;
+			case M:
+				if(!millisec)
+					millisec = 1;
+				time_aux += time_aux_I * 60000UL;
+				time_aux_I = 0UL;
+				break;
+			case H:
+				if(!millisec)
+					millisec = 1;
+				time_aux += time_aux_I * 3600000UL;
+				time_aux_I = 0UL;
+				break;
 		}
 	}
 
+	//Ativa a leitura do PID
 	if(!setting_pid && !setting_time && key_codes[V_CTRL] && key_codes[V_ALT]){
 		setting_pid = 1;
 	}
 
-	if(setting_pid && !setting_time && key_codes[V_CTRL] && key_codes[V_ALT] && key_codes[V_SPACE] && !(scancode & SCAN)) {
+	//Ativa a leitura do timer
+	if(setting_pid && !setting_time && key_codes[V_CTRL] && key_codes[V_ALT] && key_codes[V_SPACE]) {
 		setting_pid = 0;
 		setting_time = 1;
 	}
 
-
-	//Finalizando o processo sem tempo programado
-	if(setting_pid && !key_codes[V_CTRL] && !key_codes[V_ALT] && pid) {
-		processo = pid_task(find_vpid(pid), PIDTYPE_PID);
-
-		printk(KERN_INFO "Matando processo de PID: %d\n", pid);
-		force_sig(9, processo);
+	//Finalizando o processo instantâneo
+	if(setting_pid  && !setting_time && !key_codes[V_CTRL] && !key_codes[V_ALT] && pid_aux) {
+		pid = pid_aux;
+		close_the_process(pid);
+		printk(KERN_INFO "Matando processo de PID: %d\n", pid_aux);
 		setting_pid = 0;
-		pid = 0;
+		setting_time = 0;
+		time_aux = 0;
+		pid_aux = 0;
+	}
+
+	//Finalizando o proceso com timer
+	if(!setting_pid && setting_time && !key_codes[V_CTRL] && !key_codes[V_ALT] && pid_aux && time_aux && !timing) {
+		unsigned long int h = 0, m = 0, s = 0;
+		if(!millisec)
+			time_aux *= 1000;
+		pid = pid_aux;
+		time = time_aux;
+		time_aux /= 1000;
+		//h = time_aux / 3600000;
+		//m = time_aux / 60000;
+		//s = time_aux % 1000;
+		printk(KERN_INFO "Convertendo %lu para horas minutos e segundos\n", time_aux);
+		if(time_aux > 3600) {
+			m = time_aux / 60;
+			s = time_aux % 60;
+			h = m / 60;
+			m = m % 60;
+		} else {
+			m = time_aux / 60;
+			s = time_aux % 60;
+		}
+		setup_timer(&my_timer, my_timer_callback, 0);
+		mod_timer(&my_timer, jiffies + msecs_to_jiffies(time));
+		printk(KERN_INFO "Finalizando o processo de PID: %d em %luh%lum%lus\n", pid, h, m, s);
+		timing = 1;
+		setting_pid = 0;
+		setting_time = 0;
+		time_aux = 0UL;
+		pid_aux = 0;
+	}
+
+	//Não permite definir um tempo
+	if(!setting_pid && setting_time && !key_codes[V_CTRL] && !key_codes[V_ALT] && pid_aux && time_aux && timing) {
+		printk(KERN_INFO "O processo de PID %d ja foi programado para ser fechado em %lus\n", pid_aux, millisec?time_aux/1000:time_aux);
+	}
+
+	if(!setting_pid && !setting_time && !key_codes[V_CTRL] && !key_codes[V_ALT] && (pid_aux || time_aux)) {
+		pid_aux = 0;
+		time_aux = 0;
 	}
 
 	return (irq_handler_t) IRQ_HANDLED;
 }
 
 static int __init hello_init(void) {
+	// unsigned long int test = 100;
+	// printk(KERN_INFO "Teste de ulitoa: %s\n", ulitoa(test));
 	request_irq(1, (irq_handler_t) irq_handler, IRQF_SHARED, "devDriver_keyboard_irq", (void*) (irq_handler)); 
 	printk(KERN_INFO "O módulo de atalho para finalizar um processo pelo pid foi registrado\n");
 	return 0;
@@ -164,8 +271,68 @@ static int __init hello_init(void) {
 
 static void __exit hello_exit(void) {
 	free_irq(1, (void*) (irq_handler));
+	try_to_del_timer_sync(&my_timer);
 	printk(KERN_INFO "O módulo de atalho para finalizar um processo pelo pid foi removido\n");
 }
 
 module_init(hello_init);
 module_exit(hello_exit);
+
+
+
+// void swap_char(char *a, char *b) {
+// 	char *aux = a;
+// 	a = b;
+// 	b = aux;
+// }
+
+// char* reverse_a_string(char* str, int tam) {
+// 	int i = 0;
+// 	static char* aux;
+// 	aux  = (char*)vmalloc(sizeof(char) * tam);
+// 	while(str[i] != '\0') {
+// 		aux[i] = str[tam - i - 1];
+// 		i++;
+// 	}
+// 	aux[i] = '\0';
+// 	return aux;
+	
+// }
+
+// char* ulitoa(unsigned long int num) {	
+// 	char *str;
+// 	int i = 0;
+// 	str = (char*) vmalloc(sizeof(char) * 19);
+
+//     if (num == 0) {
+//         str[i++] = '0';
+//         str[i] = '\0';
+//         return str;
+//     }
+
+//     while (num != 0) {
+//         int mod = num % 10;
+//         str[i++] = (mod > 9)? (mod -10) + 'a' : mod + '0';
+//         num = num/10;
+//     }
+//     str[i] = '\0';
+
+//     str = reverse_a_string(str, i);
+
+//     return str;
+
+// }
+
+// char *print_time_programmed(unsigned long int time) {
+// 	char *str;
+// 	str = (char*) vmalloc(sizeof(char) * 19);
+// 	if(!time / 1000UL)
+//     	return "0s";
+//     //if(!((int)time / 60000)) {
+//     	//strcpy(str, ulitoa(time / 1000);
+//     	return str;
+//     //}
+
+// 	//("%s%s%s", time/3600000?ulitoa(time % 3600000)"h":"", time/60000?ulitoa(time % 60000)"m":"");
+// 	return str;
+// }
